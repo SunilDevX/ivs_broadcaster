@@ -145,7 +145,7 @@ public class IvsPlayerView extends Player.Listener implements PlatformView, Surf
                 result.success(true);
                 break;
             case "position":
-                result.success(player.getPosition());
+                result.success(millisToSeconds(player.getPosition()));
                 break;
             case "qualities":
                 List<String> qualities = getQualities();
@@ -254,7 +254,7 @@ public class IvsPlayerView extends Player.Listener implements PlatformView, Surf
     @Override
     public void onDurationChanged(long l) {
         HashMap<String, Object> data = new HashMap<>();
-        data.put("duration", l);
+        data.put("duration", millisToSeconds(l));
         sendEvent(data);
     }
 
@@ -295,5 +295,9 @@ public class IvsPlayerView extends Player.Listener implements PlatformView, Surf
         HashMap<String, Object> data = new HashMap<>();
         data.put("quality", quality.getName());
         sendEvent(data);
+    }
+
+    public long millisToSeconds(long millis) {
+        return millis / 1000;
     }
 }
