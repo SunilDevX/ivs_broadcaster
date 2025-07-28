@@ -46,10 +46,40 @@ class _BroadCastWidgetState extends State<BroadCastWidget> {
             const Row(),
             ElevatedButton(
               onPressed: () async {
+                final result = await showDialog(
+                  context: context,
+                  builder: (context) {
+                    return AlertDialog(
+                      title: const Text('Select Channel ID for Broadcast'),
+                      content: Column(
+                        children: [
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context, '0');
+                            },
+                            child: const Text("Channel 1"),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context, '1');
+                            },
+                            child: const Text("Channel 2"),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context, '2');
+                            },
+                            child: const Text("Channel 3"),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const HomePage(),
+                    builder: (context) => HomePage(channel: result),
                   ),
                 );
               },

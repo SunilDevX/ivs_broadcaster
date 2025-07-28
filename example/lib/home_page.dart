@@ -13,7 +13,8 @@ import 'package:ivs_broadcaster/Broadcaster/ivs_broadcaster.dart';
 import 'package:ivs_broadcaster/helpers/enums.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({Key? key}) : super(key: key);
+  final String channel;
+  const HomePage({Key? key, required this.channel}) : super(key: key);
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -33,7 +34,10 @@ class _HomePageState extends State<HomePage> {
   IvsBroadcaster? ivsBroadcaster;
   // String key = "sk_us-east-************************************";
   // String url = "rtmps:-***************************************";
-  String key = "sk_us-east-1_rDaEh55crJgC_JuCoeGBlcRIa1qnlkirfuwjSjuNKmy";
+  // String key = "sk_us-east-1_rDaEh55crJgC_JuCoeGBlcRIa1qnlkirfuwjSjuNKmy";
+  // String url = "rtmps://7453a0e95db4.global-contribute.live-video.net:443/app/";
+  late String key;
+  late String url;
 
   double maxZoom = 4.0; // Maximum zoom level
   // final double _scale = 1.0;
@@ -43,7 +47,6 @@ class _HomePageState extends State<HomePage> {
   IvsQuality quality = IvsQuality.q1080;
   ValueNotifier<bool> showBox = ValueNotifier(false);
   Timer? timer;
-  String url = "rtmps://7453a0e95db4.global-contribute.live-video.net:443/app/";
 
   @override
   void dispose() {
@@ -54,9 +57,26 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  List<Map<String, dynamic>> channels = [
+    {
+      "key": "sk_us-east-1_u0AwAFbvFgns_RB85KQEnyoHTKc2Bc2eHIRQZYBMyes",
+      "url": "rtmps://7453a0e95db4.global-contribute.live-video.net:443/app/",
+    },
+    {
+      "key": "sk_us-east-1_RSL7QAIDuoWE_79iUJnsoDPLWBtg3n3FBDEfe4W1sAH",
+      "url": "rtmps://7453a0e95db4.global-contribute.live-video.net:443/app/",
+    },
+    {
+      "key": "sk_us-east-1_vLeJoSeVSWSK_Rp8caMzIUmB6j4Oa0Dd0Ldzde8otVi",
+      "url": "rtmps://7453a0e95db4.global-contribute.live-video.net:443/app/",
+    },
+  ];
+
   @override
   void initState() {
     super.initState();
+    key = channels[int.parse(widget.channel)]['key'];
+    url = channels[int.parse(widget.channel)]['url'];
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
@@ -114,13 +134,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  CameraType currentCameraType = CameraType.BACK;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('IVS Broadcaster'),
+        title: Text('Channel: ${key.substring(key.length - 10)}'),
         leading: IconButton(
           onPressed: () {
             Navigator.pop(context);
@@ -161,7 +183,10 @@ class _HomePageState extends State<HomePage> {
           ),
           IconButton(
             onPressed: () {
-              ivsBroadcaster?.changeCamera(CameraType.FRONT);
+              currentCameraType = currentCameraType == CameraType.FRONT
+                  ? CameraType.BACK
+                  : CameraType.FRONT;
+              ivsBroadcaster?.changeCamera(currentCameraType);
             },
             icon: const Icon(Icons.cameraswitch_rounded),
           ),

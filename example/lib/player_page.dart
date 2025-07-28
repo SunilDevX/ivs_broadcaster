@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:ivs_broadcaster/Player/Widget/ivs_player_view.dart';
 import 'package:ivs_broadcaster/Player/ivs_player.dart';
 import 'package:ivs_broadcaster/helpers/enums.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class PlayerPage extends StatefulWidget {
   const PlayerPage({super.key});
@@ -18,35 +19,41 @@ class _PlayerPageState extends State<PlayerPage> {
   ValueNotifier<bool> autoPlay = ValueNotifier(true);
   final urlController = TextEditingController();
   final player1 =
-      "https://4c62a87c1810.us-west-2.playback.live-video.net/api/video/v1/us-west-2.049054135175.channel.TgUC9BcpWMIK.m3u8?player_version=1.19.0";
+      "https://7453a0e95db4.us-east-1.playback.live-video.net/api/video/v1/us-east-1.655758237974.channel.4LR9DhfZoAjC.m3u8";
   final player2 =
-      "https://4c62a87c1810.us-west-2.playback.live-video.net/api/video/v1/us-west-2.049054135175.channel.vz7GFGP6M3xJ.m3u8?player_version=1.19.0";
+      "https://7453a0e95db4.us-east-1.playback.live-video.net/api/video/v1/us-east-1.655758237974.channel.Xce1pHpOfBvZ.m3u8";
   final player3 =
-      "https://4c62a87c1810.us-west-2.playback.live-video.net/api/video/v1/us-west-2.049054135175.channel.7hL7yiiFH0Q1.m3u8?player_version=1.19.0";
+      "https://7453a0e95db4.us-east-1.playback.live-video.net/api/video/v1/us-east-1.655758237974.channel.YdY4tdMLtDoO.m3u8";
   final player4 =
-      "https://4c62a87c1810.us-west-2.playback.live-video.net/api/video/v1/us-west-2.049054135175.channel.NUiimXpVUGyr.m3u8?player_version=1.19.0";
+      "https://4c62a87c1810.us-west-2.playback.live-video.net/api/video/v1/us-west-2.049054135175.channel.iNMK0w9JnUkC.m3u8";
 
   @override
   void initState() {
     _player = IvsPlayer.instance;
+    WakelockPlus.enable();
     super.initState();
     urlController.text =
-        "https://4c62a87c1810.us-west-2.playback.live-video.net/api/video/v1/us-west-2.049054135175.channel.JmLwVqcdvTLO.m3u8";
+        "https://4c62a87c1810.us-west-2.playback.live-video.net/api/video/v1/us-west-2.049054135175.channel.iNMK0w9JnUkC.m3u8";
     WidgetsBinding.instance.addPostFrameCallback(
       (timeStamp) {
-        _player.multiPlayer([
-          player1,
-          player2,
-          player3,
-          player4,
-        ]);
+        Future.delayed(
+          const Duration(seconds: 1),
+          () {
+            _player.multiPlayer([
+              player1,
+              player2,
+              player3,
+              player4,
+            ]);
+          },
+        );
       },
     );
   }
 
   @override
   void dispose() {
-    _player.stopPlayer();
+    WakelockPlus.disable();
     super.dispose();
   }
 

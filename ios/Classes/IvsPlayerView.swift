@@ -95,6 +95,7 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
     }
 
     func player(_ player: IVSPlayer, didFailWithError error: any Error) {
+        print("PlayerError: \(error.localizedDescription)")
         guard let eventSink = _eventSink,
               let id = getPlayerIdFor(player: player) else { return }
         
@@ -106,8 +107,8 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
         ]
         eventSink(dict)
         
-        // Attempt to recover from error
-        handlePlayerError(player: player, error: error)
+        // Attempt to recover from error for this specific player only
+        handlePlayerError(player: player, error: error, playerId: id)
     }
 
     func player(_ player: IVSPlayer, didSeekTo time: CMTime) {
@@ -130,6 +131,7 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
     
     func onCancel(withArguments arguments: Any?) -> FlutterError? {
         self._eventSink = nil
+        disposeAllPlayer()
         return nil
     }
     
@@ -297,98 +299,153 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
     
     // MARK: - Player Management Methods
     
-    func createPlayer(playerId: String) {
-        if players[playerId] != nil {
-            return
+    // Unified player creation method with better configuration
+    private func createPlayerInstance(playerId: String, setAsActive: Bool = false, autoPlay: Bool = false) -> IVSPlayer? {
+        // Return existing player if already created
+        if let existingPlayer = players[playerId] {
+            return existingPlayer
         }
         
         let player = IVSPlayer()
-        player.delegate = self
         
         // Configure player for optimal livestream playback
-//        player.setRebufferToLive(true)
         player.setLiveLowLatencyEnabled(true)
         
-        self.playerId = playerId
+        // Store player and view
         players[playerId] = player
         playerViews[playerId] = IVSPlayerView()
         playerViews[playerId]?.player = player
         
+        // Set delegate only for active player initially
+        if setAsActive {
+            player.delegate = self
+            self.playerId = playerId
+            player.volume = 1.0
+        } else {
+            player.volume = 0.0
+        }
+        
+        // Load the stream
         if let url = URL(string: playerId) {
             player.load(url)
         }
+        print("PlayerState: \(player.state)")
+        // Auto play if requested
+        if autoPlay {
+            player.play()
+        }
+        
+        print("Created player for: \(playerId), Active: \(setAsActive), AutoPlay: \(autoPlay)")
+        return player
+    }
+    
+    func createPlayer(playerId: String) {
+        guard createPlayerInstance(playerId: playerId, setAsActive: false, autoPlay: true) != nil else {
+            print("Failed to create player for: \(playerId)")
+            return
+        }
+        
+        // Mute all other players
+//        muteAllPlayersExcept(activePlayerId: playerId)
+        
+//        // Attach view if this is the first/active player
+//        if let playerView = playerViews[playerId] {
+//            attachPreview(container: self.playerView, preview: playerView)
+//        }
     }
     
     func multiPlayer(_ urls: [String]) {
-        // Use the first URL as the initial active player
-        self.playerId = urls.first
-        
-        for url in urls {
-            let player = IVSPlayer()
-            player.delegate = self
-            
-            // Configure for livestream
-//            player.setRebufferToLive(true)
-            player.setLiveLowLatencyEnabled(true)
-             
-            let playerId = url
-            players[playerId] = player
-            playerViews[playerId] = IVSPlayerView()
-            playerViews[playerId]?.player = player
-            
-            if let streamUrl = URL(string: url) {
-                player.load(streamUrl)
-            }
-            
-            // Start with muted except for the first one
-            player.volume = 0
+        guard !urls.isEmpty else {
+            print("multiPlayer called with empty URLs array")
+            return
         }
         
-        // Play all players and attach the first one for preview
-        if let firstPlayer = urls.first, let player = players[firstPlayer] {
-            player.volume = 1
-            player.play()
+        // Clear existing players if any
+        disposeAllPlayer()
+        
+        // Set the first URL as the initial active player
+        self.playerId = urls.first
+        
+        // Create all players
+        for (index, url) in urls.enumerated() {
+            let isActive = (index == 0)
             
-            if let playerView = playerViews[firstPlayer] {
-                attachPreview(container: self.playerView, preview: playerView)
+            guard let player = createPlayerInstance(playerId: url, setAsActive: isActive, autoPlay: false) else {
+                print("Failed to create player for URL: \(url)")
+                continue
             }
             
-            // Play other players with a small delay to help with initial synchronization
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                for (id, player) in self.players {
-                    if id != firstPlayer {
-                        player.play()
-                    }
+            // Configure volume based on active state
+            player.volume = isActive ? 1.0 : 0.0
+        }
+        
+        // Start playing all players with the active one first
+        if let firstPlayer = urls.first,
+            let activePlayerView = playerViews[firstPlayer] {
+            attachPreview(container: self.playerView, preview: activePlayerView)
+          
+            
+            
+            self.muteAllPlayersExcept(activePlayerId: firstPlayer)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                for (_, player) in self.players {
+                    player.play()
                 }
             }
         }
+        
+        print("MultiPlayer setup completed with \(urls.count) streams")
+        print(getPlayerStatus())
     }
+ 
     
     func selectPlayer(playerId: String) {
-        guard let player = players[playerId],
-              let playerView = playerViews[playerId] else { return }
+        print("Selecting player: \(playerId)")
         
+        // Create player if it doesn't exist
+        var player: IVSPlayer?
+        if players[playerId] == nil {
+            print("Player \(playerId) not found, creating new player")
+            player = createPlayerInstance(playerId: playerId, setAsActive: false, autoPlay: true)
+        } else {
+            player = players[playerId]
+        }
+        
+        guard let selectedPlayer = player,
+              let selectedPlayerView = playerViews[playerId] else {
+            print("Failed to get or create player for: \(playerId)")
+            return
+        }
+        
+        // Store previous active player
         let previousPlayer = self.playerId
+        
+        // Update active player
         self.playerId = playerId
         
-        // Update delegates if needed
+        // Update delegates - remove from previous, set to new
         if let previousId = previousPlayer, previousId != playerId {
             players[previousId]?.delegate = nil
-            player.delegate = self
+        }
+        selectedPlayer.delegate = self
+        
+        // Ensure the selected player is playing
+        if selectedPlayer.state != .playing {
+            selectedPlayer.play()
         }
         
         // Mute all players except the selected one
-        for (id, p) in players {
-            p.volume = (id == playerId) ? 1.0 : 0.0
-        }
-         
+        muteAllPlayersExcept(activePlayerId: playerId)
         
-        // Smooth transition for UI
+        // Maintain all players to ensure they keep running
+        maintainAllPlayers()
+        
+        // Smooth UI transition
         UIView.animate(withDuration: 0.2, animations: {
             self.playerView.alpha = 0
         }) { _ in
             // Update the preview
-            self.attachPreview(container: self.playerView, preview: playerView)
+            self.attachPreview(container: self.playerView, preview: selectedPlayerView)
             
             // Fade in the new preview
             UIView.animate(withDuration: 0.3) {
@@ -396,50 +453,86 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
             }
         }
         
+        // Update events for the new active player
         updateEventsOfCurrentPlayer()
+        
+        print("Successfully selected player: \(playerId)")
+        print(getPlayerStatus())
     }
     
     func updateEventsOfCurrentPlayer() {
-        guard let playerId = self.playerId, let player = players[playerId] else { return }
+        guard let playerId = self.playerId, let player = players[playerId] else {
+            print("No active player to update events for")
+            return
+        }
         
+        // Ensure delegate is set
         player.delegate = self
         
         // Send comprehensive state update
         let dict: [String: Any] = [
             "playerId": playerId,
             "state": player.state.rawValue,
+            "stateDescription": stateToString(player.state),
             "syncTime": player.syncTime.seconds,
             "position": player.position.seconds,
             "quality": player.quality?.name ?? "",
-            "autoQualityMode": player.autoQualityMode
+            "autoQualityMode": player.autoQualityMode,
+            "volume": player.volume,
+            "isMuted": player.volume == 0
         ]
         _eventSink?(dict)
+        
+        print("Updated events for active player: \(playerId), state: \(stateToString(player.state))")
     }
     
     func startPlayer(url: String, autoPlay: Bool) {
-        guard let player = players[url] else {
-            // Create player if it doesn't exist
-            createPlayer(playerId: url)
-            guard let newPlayer = players[url], let playerView = playerViews[url] else { return }
-            
+        print("Starting player for URL: \(url), autoPlay: \(autoPlay)")
+        
+        // Check if player already exists
+        if let existingPlayer = players[url], let existingPlayerView = playerViews[url] {
+            print("Player already exists for URL: \(url)")
             self.playerId = url
-            if autoPlay {
-                newPlayer.play()
+            
+            // Update delegate and ensure it's the active player
+            existingPlayer.delegate = self
+            
+            if autoPlay && existingPlayer.state != .playing {
+                existingPlayer.play()
             }
             
-            attachPreview(container: self.playerView, preview: playerView)
+            // Mute all other players
+            muteAllPlayersExcept(activePlayerId: url)
+            
+            // Attach the view
+            attachPreview(container: self.playerView, preview: existingPlayerView)
+            updateEventsOfCurrentPlayer()
             return
         }
         
-        self.playerId = url
-        if autoPlay {
-            player.play()
+        // Create new player if it doesn't exist
+        guard let newPlayer = createPlayerInstance(playerId: url, setAsActive: true, autoPlay: autoPlay),
+              let newPlayerView = playerViews[url] else {
+            print("Failed to create player for URL: \(url)")
+            return
         }
-        selectPlayer(playerId: url)
+        
+        // Mute all other players
+        muteAllPlayersExcept(activePlayerId: url)
+        
+        // Attach the view
+        attachPreview(container: self.playerView, preview: newPlayerView)
+        
+        print("Successfully started player for URL: \(url)")
     }
     
     func stopPlayer(playerId: String) {
-        guard let player = players[playerId] else { return }
+        print("Stopping player: \(playerId)")
+        
+        guard let player = players[playerId] else {
+            print("Player \(playerId) not found")
+            return
+        }
         
         // Properly cleanup resources
         player.pause()
@@ -449,46 +542,101 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
         players.removeValue(forKey: playerId)
         playerViews.removeValue(forKey: playerId)
         
-        // Update active player if needed
+        print("Player \(playerId) stopped and removed")
+        
+        // Update active player if the stopped player was active
         if playerId == self.playerId {
-            self.playerId = players.keys.first
-            if let newId = self.playerId, let playerView = playerViews[newId] {
-                players[newId]?.volume = 1
-                players[newId]?.delegate = self
-                attachPreview(container: self.playerView, preview: playerView)
+            print("Stopped player was active, selecting new active player")
+            
+            // Find the next available player to make active
+            if let newActiveId = players.keys.first,
+               let newActivePlayer = players[newActiveId],
+               let newActivePlayerView = playerViews[newActiveId] {
+                
+                // Set as new active player
+                self.playerId = newActiveId
+                newActivePlayer.delegate = self
+                
+                // Ensure it's playing and unmuted
+                if newActivePlayer.state != .playing {
+                    newActivePlayer.play()
+                }
+                muteAllPlayersExcept(activePlayerId: newActiveId)
+                
+                // Update UI
+                attachPreview(container: self.playerView, preview: newActivePlayerView)
+                updateEventsOfCurrentPlayer()
+                
+                print("New active player set: \(newActiveId)")
             } else {
-                // Clear the view if no players left
-                self.playerView.subviews.forEach { $0.removeFromSuperview() }
+                // No players left, clear everything
+                self.playerId = nil
+                DispatchQueue.main.async {
+                    self.playerView.subviews.forEach { $0.removeFromSuperview() }
+                }
+                print("No players remaining, UI cleared")
             }
         }
     }
     
     func disposeAllPlayer() {
-        let keys = Array(players.keys)
-        for key in keys {
-            if let player = players[key] {
+        print("Disposing all players...")
+        
+        // Safely dispose of all players
+        let playerIds = Array(players.keys)
+        for playerId in playerIds {
+            if let player = players[playerId] {
+                // Stop and clean up the player
                 player.pause()
                 player.delegate = nil
-                players.removeValue(forKey: key)
-                playerViews.removeValue(forKey: key)
+                
+                // Remove from dictionaries
+                players.removeValue(forKey: playerId)
+                playerViews.removeValue(forKey: playerId)
+                
+                print("Disposed player: \(playerId)")
             }
         }
         
+        // Clear active player reference
         playerId = nil
-        self.playerView.subviews.forEach { $0.removeFromSuperview() }
+        
+        // Clear the UI
+        DispatchQueue.main.async {
+            self.playerView.subviews.forEach { $0.removeFromSuperview() }
+        }
+        
+        print("All players disposed successfully")
     }
     
     // MARK: - Player Control Methods
     
     func mutePlayer(playerId: String) {
-        guard let player = players[playerId] else { return }
-        player.volume = player.volume == 0 ? 1 : 0
+        guard let player = players[playerId] else {
+            print("Player \(playerId) not found for mute operation")
+            return
+        }
         
-        // Report volume change
-        if player.volume == 0 {
-            _eventSink?(["playerId": playerId, "type": "volume", "isMuted": true])
+        let wasMuted = (player.volume == 0)
+        
+        if playerId == self.playerId {
+            // For active player, toggle mute state
+            player.volume = wasMuted ? 1.0 : 0.0
+            
+            // Report volume change
+            let dict: [String: Any] = [
+                "playerId": playerId, 
+                "type": "volume", 
+                "isMuted": !wasMuted,
+                "volume": player.volume
+            ]
+            _eventSink?(dict)
+            
+            print("Active player \(playerId) \(wasMuted ? "unmuted" : "muted")")
         } else {
-            _eventSink?(["playerId": playerId, "type": "volume", "isMuted": false])
+            // For inactive players, they should remain muted
+            player.volume = 0.0
+            print("Inactive player \(playerId) kept muted")
         }
     }
     
@@ -580,6 +728,61 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
     
     // MARK: - Helper Methods
     
+    // Centralized method to mute all players except the active one
+    private func muteAllPlayersExcept(activePlayerId: String) {
+        for (playerId, player) in players {
+            player.volume = (playerId == activePlayerId) ? 1.0 : 0.0
+        }
+        print("Muted all players except: \(activePlayerId)")
+    }
+    
+    // Method to get current player status for debugging
+    private func getPlayerStatus() -> String {
+        var status = "=== Player Status ===\n"
+        status += "Active Player: \(playerId ?? "None")\n"
+        status += "Total Players: \(players.count)\n"
+        
+        for (playerId, player) in players {
+            let isActive = (playerId == self.playerId) ? "🔴" : "⚪"
+            let volume = player.volume == 1.0 ? "🔊" : "🔇"
+            status += "\(isActive) \(playerId): \(stateToString(player.state)) \(volume)\n"
+        }
+        
+        return status
+    }
+    
+    // Method to ensure all players are properly maintained
+    private func maintainAllPlayers() {
+        DispatchQueue.main.async {
+            for (playerId, player) in self.players {
+                // Ensure inactive players are still playing but muted
+                if playerId != self.playerId {
+                    // Reload if player has stopped or encountered an error
+                    if player.state == .idle || player.state == .ended {
+                        if let url = player.path {
+                            print("Reloading stopped player: \(playerId)")
+                            player.load(url)
+                        }
+                    }
+                    
+                    // Ensure player is playing if it's ready
+                    if player.state == .ready || player.state == .buffering {
+                        player.play()
+                    }
+                    
+                    // Ensure it's muted
+                    player.volume = 0.0
+                } else {
+                    // Ensure active player has proper volume and is playing
+                    player.volume = 1.0
+                    if player.state == .ready && player.state != .playing {
+                        player.play()
+                    }
+                }
+            }
+        }
+    }
+    
     private func attachPreview(container: UIView, preview: UIView) {
         // Clear current view, and then attach the new view
         container.subviews.forEach { $0.removeFromSuperview() }
@@ -598,19 +801,40 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
         return players.first(where: { $0.value === player })?.key
     }
     
-    private func handlePlayerError(player: IVSPlayer, error: Error) {
-        // Attempt to recover based on error type
+    private func handlePlayerError(player: IVSPlayer, error: Error, playerId: String) {
         let nsError = error as NSError
         
-        // If network-related error, attempt to reconnect
-        if nsError.domain == NSURLErrorDomain {
-            // Wait briefly and try to reload
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+        print("Player \(playerId) encountered error: \(error.localizedDescription) (Code: \(nsError.code))")
+        
+        // Attempt to recover based on error type for this specific player
+        if nsError.domain == NSURLErrorDomain || nsError.code == -1009 { // Network errors
+            print("Network error detected for player \(playerId), attempting recovery...")
+            
+            // Wait briefly and try to reload only this player
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 if let url = player.path {
+                    print("Reloading player \(playerId) after network error")
                     player.load(url)
-                    player.play()
+                    
+                    // Only play if this player should be playing
+                    if self.players[playerId] != nil {
+                        // Small delay before playing to ensure load completes
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                            player.play()
+                            
+                            // Restore proper volume state
+                            if playerId == self.playerId {
+                                player.volume = 1.0
+                            } else {
+                                player.volume = 0.0
+                            }
+                        }
+                    }
                 }
             }
+        } else {
+            // For other types of errors, log and continue
+            print("Non-recoverable error for player \(playerId): \(error.localizedDescription)")
         }
     }
     
