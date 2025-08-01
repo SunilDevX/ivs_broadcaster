@@ -1431,7 +1431,7 @@ class IvsBroadcasterView: NSObject, FlutterPlatformView, FlutterStreamHandler,
         didChange state: IVSBroadcastSession.State
     ) {
         logger.log("IVSBroadcastSession state changed to: \(state)")
-        
+        self.sendMetaData(metadata: "Stream \(getName(state)) at \(Date())")
         DispatchQueue.main.async {
             var data = [String: String]()
             switch state {
@@ -1441,6 +1441,7 @@ class IvsBroadcasterView: NSObject, FlutterPlatformView, FlutterStreamHandler,
                 data = ["state": "CONNECTING"]
             case .connected:
                 data = ["state": "CONNECTED"]
+                
             case .disconnected:
                 data = ["state": "DISCONNECTED"]
             case .error:
@@ -1449,6 +1450,21 @@ class IvsBroadcasterView: NSObject, FlutterPlatformView, FlutterStreamHandler,
                 data = ["state": "INVALID"]
             }
             self.sendEvent(data)
+        }
+    }
+    
+    func getName(_ state: IVSBroadcastSession.State) -> String {
+        switch state {
+        case .connecting:
+            return "Connecting"
+        case .connected:
+            return "Connected"
+        case .disconnected:
+            return "Disconnected"
+        case .error:
+            return "Error"
+        case .invalid:
+            return "InValid"
         }
     }
     
@@ -1488,13 +1504,48 @@ class IvsBroadcasterView: NSObject, FlutterPlatformView, FlutterStreamHandler,
         let health = statistics.networkHealth.rawValue
         
         // Log transmission statistics occasionally to avoid spam
-        if Int(Date().timeIntervalSince1970) % 10 == 0 {
+        if Int(Date().timeIntervalSince1970) % 2 == 0 {
+            sendMetaData(metadata: "Transmission stats - Measured: \(statistics.measuredBitrate), Quality: \(getQualityName(statistics.broadcastQuality)), Network: \(getHealthName(statistics.networkHealth))")
             logger.log("Transmission stats - Recommended: \(statistics.recommendedBitrate), Measured: \(statistics.measuredBitrate), Quality: \(quality), Network: \(health)", level: .debug)
         }
         
         var data = [String: Any]()
         data = ["quality": quality, "network": health]
         self._eventSink?(data)
+    }
+}
+
+func getHealthName(_ quality: IVSTransmissionStatistics.NetworkHealth) -> String {
+     switch quality {
+     case .bad:
+         return "Bad"
+     case .excellent:
+        return "Excellent"
+     case .high:
+         return "High"
+     case .low:
+         return "Low"
+     case .medium:
+         return "Medium"
+     @unknown default:
+        return "Unknown"
+    }
+}
+
+func getQualityName(_ quality: IVSTransmissionStatistics.BroadcastQuality) -> String {
+     switch quality {
+     case .low:
+        return "Low"
+    case .medium:
+        return "Medium"
+    case .high:
+        return "High"
+     case .nearMaximum:
+         return "Near Maximum"
+     case .nearMinimum:
+         return "Near Minimum"
+     @unknown default:
+        return "Unknown"
     }
 }
 

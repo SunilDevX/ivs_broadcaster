@@ -122,4 +122,6 @@ abstract class IvsBroadcasterPlatform extends PlatformInterface {
   Future<CameraBrightness> getCameraBrightness();
 
   Future<void> setCameraBrightness(CameraBrightness brightness);
+
+  Future<void> sendTimedData(String data);
 }

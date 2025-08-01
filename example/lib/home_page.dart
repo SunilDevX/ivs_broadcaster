@@ -11,6 +11,7 @@ import 'package:ivs_broadcaster/Broadcaster/Classes/video_capturing_model.dart';
 import 'package:ivs_broadcaster/Broadcaster/Widgets/preview_widget.dart';
 import 'package:ivs_broadcaster/Broadcaster/ivs_broadcaster.dart';
 import 'package:ivs_broadcaster/helpers/enums.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class HomePage extends StatefulWidget {
   final String channel;
@@ -54,6 +55,7 @@ class _HomePageState extends State<HomePage> {
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
     ]);
+
     super.dispose();
   }
 
@@ -75,6 +77,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WakelockPlus.enable();
     key = channels[int.parse(widget.channel)]['key'];
     url = channels[int.parse(widget.channel)]['url'];
     SystemChrome.setPreferredOrientations([
@@ -84,6 +87,15 @@ class _HomePageState extends State<HomePage> {
     ivsBroadcaster = IvsBroadcaster.instance;
     ivsBroadcaster!.broadcastState.stream.listen((event) {
       log(event.name.toString(), name: "IVS Broadcaster");
+      if (event == BroadCastState.CONNECTED) {
+        ivsBroadcaster!.sendTimedData(
+          "Connected to channel: ${key.substring(key.length - 10)}",
+        );
+      } else if (event == BroadCastState.DISCONNECTED) {
+        ivsBroadcaster!.sendTimedData(
+          "Disconnected from channel: ${key.substring(key.length - 10)}",
+        );
+      }
     });
     ivsBroadcaster!.broadcastQuality.stream.listen((event) {
       log(event.name.toString(), name: "IVS Broadcaster Quality");
@@ -158,8 +170,11 @@ class _HomePageState extends State<HomePage> {
         actions: [
           IconButton(
             onPressed: () async {
-              await ivsBroadcaster
-                  ?.updateCameraLens(IOSCameraLens.UltraWideCamera);
+              // await ivsBroadcaster
+              //     ?.updateCameraLens(IOSCameraLens.UltraWideCamera);
+              ivsBroadcaster!.sendTimedData(
+                "Current Time: ${DateTime.now().toIso8601String()}",
+              );
             },
             icon: const Icon(Icons.camera),
           ),

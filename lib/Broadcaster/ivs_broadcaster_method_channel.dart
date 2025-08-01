@@ -290,4 +290,16 @@ class MethodChannelIvsBroadcaster extends IvsBroadcasterPlatform {
       throw Exception("$e [Set Camera Brightness]");
     }
   }
+
+  @override
+  Future<void> sendTimedData(String data) async {
+    try {
+      await methodChannel.invokeMethod<void>(
+        "sendTimeMetaData",
+        data,
+      );
+    } catch (e) {
+      throw Exception("$e [Send Timed Data]");
+    }
+  }
 }

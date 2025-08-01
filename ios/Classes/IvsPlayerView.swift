@@ -16,6 +16,7 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
     // Constants for better code maintenance
     private enum PlayerConstants {
         static let syncThreshold: TimeInterval = 0.5 // Tolerance for sync in seconds
+        static let playerSyncThreshold: TimeInterval = 1.0 // Threshold for player synchronization in seconds
         static let defaultBufferSize: TimeInterval = 2.0 // Buffer size for livestreams in seconds
     }
     
@@ -90,6 +91,7 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
                 "startTime": textMetadataCue.startTime.epoch,
                 "endTime": textMetadataCue.endTime.epoch,
             ]
+            print("timed metadata: \(dict)")
             eventSink(dict)
         }
     }
@@ -328,12 +330,13 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
         // Load the stream
         if let url = URL(string: playerId) {
             player.load(url)
+            player.setRebufferToLive(true)
         }
         print("PlayerState: \(player.state)")
         // Auto play if requested
-        if autoPlay {
-            player.play()
-        }
+               if autoPlay {
+                   player.play() 
+               }
         
         print("Created player for: \(playerId), Active: \(setAsActive), AutoPlay: \(autoPlay)")
         return player
@@ -344,14 +347,6 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
             print("Failed to create player for: \(playerId)")
             return
         }
-        
-        // Mute all other players
-//        muteAllPlayersExcept(activePlayerId: playerId)
-        
-//        // Attach view if this is the first/active player
-//        if let playerView = playerViews[playerId] {
-//            attachPreview(container: self.playerView, preview: playerView)
-//        }
     }
     
     func multiPlayer(_ urls: [String]) {
@@ -360,8 +355,8 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
             return
         }
         
-        // Clear existing players if any
-        disposeAllPlayer()
+//        // Clear existing players if any
+//        disposeAllPlayer()
         
         // Set the first URL as the initial active player
         self.playerId = urls.first
@@ -383,9 +378,6 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
         if let firstPlayer = urls.first,
             let activePlayerView = playerViews[firstPlayer] {
             attachPreview(container: self.playerView, preview: activePlayerView)
-          
-            
-            
             self.muteAllPlayersExcept(activePlayerId: firstPlayer)
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
                 for (_, player) in self.players {
@@ -400,8 +392,7 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
  
     
     func selectPlayer(playerId: String) {
-        print("Selecting player: \(playerId)")
-        
+        print("Selecting player: \(playerId)") 
         // Create player if it doesn't exist
         var player: IVSPlayer?
         if players[playerId] == nil {
@@ -428,6 +419,8 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
             players[previousId]?.delegate = nil
         }
         selectedPlayer.delegate = self
+        player?.setRebufferToLive(true)
+         
         
         // Ensure the selected player is playing
         if selectedPlayer.state != .playing {
@@ -452,13 +445,13 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
                 self.playerView.alpha = 1
             }
         }
-        
+       
         // Update events for the new active player
         updateEventsOfCurrentPlayer()
-        
         print("Successfully selected player: \(playerId)")
         print(getPlayerStatus())
     }
+ 
     
     func updateEventsOfCurrentPlayer() {
         guard let playerId = self.playerId, let player = players[playerId] else {
@@ -750,6 +743,7 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
         
         return status
     }
+     
     
     // Method to ensure all players are properly maintained
     private func maintainAllPlayers() {
@@ -782,6 +776,7 @@ class IvsPlayerView: NSObject, FlutterPlatformView, FlutterStreamHandler, IVSPla
             }
         }
     }
+     
     
     private func attachPreview(container: UIView, preview: UIView) {
         // Clear current view, and then attach the new view

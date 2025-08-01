@@ -278,4 +278,12 @@ class IvsBroadcaster {
   Future<void> setCameraBrightness(CameraBrightness brightness) async {
     return await broadcater.setCameraBrightness(brightness);
   }
+
+  Future<void> sendTimedData(String data) async {
+    try {
+      return await broadcater.sendTimedData(data);
+    } catch (e) {
+      throw Exception("Unable to send timed data: $data [Send Timed Data]");
+    }
+  }
 }
